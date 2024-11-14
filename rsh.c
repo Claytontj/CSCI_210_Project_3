@@ -5,111 +5,99 @@
 #include <unistd.h>
 #include <string.h>
 
-#define N 12
+#define ALLOWED_COMMANDS 12 // Number of allowed commands
 
-extern char **environ;
+extern char **environ; // Environment variable for posix_spawnp
 
-char *allowed[N] = {"cp", "touch", "mkdir", "ls", "pwd", "cat", "grep", "chmod", "diff", "cd", "exit", "help"};
+// List of allowed commands for the restricted shell
+char *allowed_commands[ALLOWED_COMMANDS] = {
+	"cp", "touch", "mkdir", "ls", "pwd", "cat",
+	"grep", "chmod", "diff", "cd", "exit", "help"};
 
-int isAllowed(const char *cmd)
+// Function to check if a command is allowed
+// Returns 1 if the command is allowed, otherwise 0
+int is_command_allowed(const char *command)
 {
-	// TODO
-	// return 1 if cmd is one of the allowed commands
-	// return 0 otherwise
-	for (size_t i = 0; i < 12; i++)
+	for (size_t i = 0; i < ALLOWED_COMMANDS; i++)
 	{
-		if (strcmp(cmd, allowed[i]) == 0)
+		if (strcmp(command, allowed_commands[i]) == 0)
 		{
-			return 0;
+			return 1;
 		}
 	}
-
-	return 1;
+	return 0;
 }
 
 int main()
 {
+	char input_line[256]; // Buffer to hold input line from the user
+	char *arguments[21];  // Array to store command and arguments (20 args max + NULL terminator)
 
-	// TODO
-	// Add variables as needed
-
-	char line[256];
-	char *argv[21];
-
-	// infinite loop till exit command is run...
+	// Infinite loop for the shell prompt until "exit" command is run
 	while (1)
 	{
+		// Display prompt
+		fprintf(stderr, "rsh> ");
 
-		fprintf(stderr, "rsh>");
-
-		if (fgets(line, 256, stdin) == NULL)
+		// Read input line from user
+		if (fgets(input_line, sizeof(input_line), stdin) == NULL)
 			continue;
 
-		if (strcmp(line, "\n") == 0)
+		// Ignore empty lines
+		if (strcmp(input_line, "\n") == 0)
 			continue;
 
-		line[strlen(line) - 1] = '\0';
+		// Remove newline character at the end of the input line
+		input_line[strlen(input_line) - 1] = '\0';
 
-		// tokenizing the input line into the respective command and its arguments
-		int argc = 0;
-		char *token = strtok(line, " ");
-		while (token != NULL && argc < 20)
+		// Tokenize the input line to separate command and arguments
+		int arg_count = 0;
+		char *token = strtok(input_line, " ");
+		while (token != NULL && arg_count < 20)
 		{
-			argv[argc++] = token;
+			arguments[arg_count++] = token;
 			token = strtok(NULL, " ");
 		}
-		// add a null termination to the argument list
-		argv[argc] = NULL;
+		arguments[arg_count] = NULL; // Null-terminate the arguments list
 
-		// make sure the command isn't empty
-		if (argc == 0)
-		{
+		// Ensure command is not empty
+		if (arg_count == 0)
 			continue;
-		}
 
-		// check if the command is allowed..
-		if (isAllowed(line) == 1)
+		// Check if command is allowed
+		if (!is_command_allowed(arguments[0]))
 		{
 			printf("NOT ALLOWED!\n");
 			continue;
 		}
-		// if we make it here, we know that the command is an allowed command...now just run the correct command
 
-		// TODO
-		// And add code to execute cd, exit, help commands
-		if (strcmp(line, "exit") == 0)
+		// Handle built-in commands
+		if (strcmp(arguments[0], "exit") == 0)
 		{
-			break;
+			break; // Exit the shell
 		}
 
-		if (strcmp(line, "help") == 0)
+		if (strcmp(arguments[0], "help") == 0)
 		{
-			// print out all the commands...
+			// Display the list of allowed commands
 			printf("The allowed commands are:\n");
-			printf("1: cp\n");
-			printf("2: touch\n");
-			printf("3: mkdir\n");
-			printf("4: ls\n");
-			printf("5: pwd\n");
-			printf("6: cat\n");
-			printf("7: grep\n");
-			printf("8: chmod\n");
-			printf("9: diff\n");
-			printf("10: cd\n");
-			printf("11: exit\n");
-			printf("12: help\n");
+			for (int i = 0; i < ALLOWED_COMMANDS; i++)
+			{
+				printf("%d: %s\n", i + 1, allowed_commands[i]);
+			}
 			continue;
 		}
 
-		if (strcmp(argv[0], "cd") == 0)
+		if (strcmp(arguments[0], "cd") == 0)
 		{
-			if (argc > 2)
+			// Handle the "cd" command with argument check
+			if (arg_count > 2)
 			{
 				printf("-rsh: cd: too many arguments\n");
 			}
-			else if (argc == 2)
+			else if (arg_count == 2)
 			{
-				if (chdir(argv[1]) != 0)
+				if (chdir(arguments[1]) != 0)
 				{
 					perror("cd");
 				}
@@ -117,22 +105,21 @@ int main()
 			continue;
 		}
 
-		// Add code to spawn processes for the first 9 commands
-		int status;
-		pid_t pid;
-		status = posix_spawnp(&pid, argv[0], NULL, NULL, argv, environ);
-		if (status == 0)
+		// Spawn a process for external commands (first 9 commands)
+		pid_t child_pid;
+		int spawn_status = posix_spawnp(&child_pid, arguments[0], NULL, NULL, arguments, environ);
+		if (spawn_status == 0)
 		{
-			// if successful, wait for the process to complete
-			if (waitpid(pid, &status, 0) == -1)
+			// Wait for child process to complete if spawn was successful
+			if (waitpid(child_pid, NULL, 0) == -1)
 			{
 				perror("waitpid");
 			}
 		}
 		else
 		{
-			// if failed, just print error message
-			printf("Failed to execute %s\n", argv[0]);
+			// Error message if spawning the process failed
+			printf("Failed to execute %s\n", arguments[0]);
 		}
 	}
 
